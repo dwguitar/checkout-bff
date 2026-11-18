@@ -1,0 +1,487 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "CKW - Checkout BFF (Fluxo Completo + Evidências)",
+    "description": "Collection automatizada para validar todos os cenários obrigatórios e regras de negócio do desafio BFF de Checkout, salvando automaticamente o cartId entre requisições e executando assertions para coleta de evidências.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "cartId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pixCartId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Fluxo Principal - Cartão de Crédito (Recusa -> Sucesso -> Duplicidade)",
+      "item": [
+        {
+          "name": "1.1 Pré-Checkout - Plano Premium (Sucesso 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Deve retornar cartId UUID válido e salvar na variável de coleção', function () {",
+                  "    pm.expect(jsonData.cartId).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('cartId', jsonData.cartId);",
+                  "});",
+                  "",
+                  "pm.test('Deve retornar detalhes do Plano Premium (R$ 39.90)', function () {",
+                  "    pm.expect(jsonData.products).to.have.lengthOf(1);",
+                  "    pm.expect(jsonData.products[0].slug).to.eql('premium');",
+                  "    pm.expect(jsonData.products[0].price).to.eql(39.90);",
+                  "    pm.expect(jsonData.products[0].currency).to.eql('BRL');",
+                  "});",
+                  "",
+                  "pm.test('Deve retornar os 3 meios de pagamento do serviço externo', function () {",
+                  "    const methods = jsonData.paymentMethods.map(m => m.name);",
+                  "    pm.expect(methods).to.include.members(['Cartão de Crédito', 'Cartão de Débito', 'Pix']);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"products\": [\n    { \"slug\": \"premium\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/pre-checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "pre-checkout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1.2 Checkout - Cartão Final 0002 Recusado (Erro 422 + frontendError)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 422 Unprocessable Entity (4xx)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Deve seguir rigorosamente o contrato frontendError (P-1001 / BLOCK)', function () {",
+                  "    pm.expect(jsonData.displayType).to.eql('BLOCK');",
+                  "    pm.expect(jsonData.errorCode).to.eql('PAYMENT_DECLINED');",
+                  "    pm.expect(jsonData.cartId).to.eql(pm.collectionVariables.get('cartId'));",
+                  "    pm.expect(jsonData.frontendError.code).to.eql('P-1001');",
+                  "    pm.expect(jsonData.frontendError.title).to.be.a('string').and.not.empty;",
+                  "    pm.expect(jsonData.frontendError.description).to.be.a('string').and.not.empty;",
+                  "    pm.expect(jsonData.frontendError.primaryButton.url).to.eql('RETRY');",
+                  "    pm.expect(jsonData.frontendError.secondaryButton.url).to.eql('/checkout/pagamento');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"{{cartId}}\",\n  \"paymentMethod\": {\n    \"name\": \"Cartão de Crédito\",\n    \"card\": {\n      \"holderName\": \"Ana Souza\",\n      \"number\": \"4111111111110002\",\n      \"expiry\": \"12/28\",\n      \"cvv\": \"123\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "checkout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1.3 Checkout - Cartão Válido Final 4242 (Sucesso 200 APROVADO)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Deve aprovar pagamento e mascarar cartão para 4242 sem expor número completo ou CVV', function () {",
+                  "    pm.expect(jsonData.cartId).to.eql(pm.collectionVariables.get('cartId'));",
+                  "    pm.expect(jsonData.status).to.eql('APROVADO');",
+                  "    pm.expect(jsonData.paidAt).to.be.a('string').and.not.empty;",
+                  "    pm.expect(jsonData.payment.method).to.eql('Cartão de Crédito');",
+                  "    pm.expect(jsonData.payment.lastDigits).to.eql('4242');",
+                  "    pm.expect(jsonData.payment.amount).to.eql(39.90);",
+                  "    pm.expect(jsonData.payment.currency).to.eql('BRL');",
+                  "    pm.expect(JSON.stringify(jsonData)).to.not.include('4111111111114242');",
+                  "    pm.expect(JSON.stringify(jsonData)).to.not.include('cvv');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"{{cartId}}\",\n  \"paymentMethod\": {\n    \"name\": \"Cartão de Crédito\",\n    \"card\": {\n      \"holderName\": \"Ana Souza\",\n      \"number\": \"4111111111114242\",\n      \"expiry\": \"12/28\",\n      \"cvv\": \"123\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "checkout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1.4 Checkout Duplicado - Carrinho Já Aprovado (Erro 409 + frontendError)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 409 Conflict (4xx)', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Deve bloquear cobrança duplicada no padrão frontendError', function () {",
+                  "    pm.expect(jsonData.displayType).to.eql('BLOCK');",
+                  "    pm.expect(jsonData.errorCode).to.eql('CART_ALREADY_APPROVED');",
+                  "    pm.expect(jsonData.frontendError.code).to.eql('P-1005');",
+                  "    pm.expect(jsonData.frontendError.primaryButton).to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"{{cartId}}\",\n  \"paymentMethod\": {\n    \"name\": \"Cartão de Crédito\",\n    \"card\": {\n      \"holderName\": \"Ana Souza\",\n      \"number\": \"4111111111114242\",\n      \"expiry\": \"12/28\",\n      \"cvv\": \"123\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "checkout"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Fluxo Pix - Plano Família (Pré-Checkout -> Sucesso Pix)",
+      "item": [
+        {
+          "name": "2.1 Pré-Checkout - Plano Família (Sucesso 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('pixCartId', jsonData.cartId);",
+                  "",
+                  "pm.test('Deve retornar Plano Família (R$ 59.90)', function () {",
+                  "    pm.expect(jsonData.products[0].slug).to.eql('familia');",
+                  "    pm.expect(jsonData.products[0].price).to.eql(59.90);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"products\": [\n    { \"slug\": \"familia\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/pre-checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "pre-checkout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.2 Checkout - Pix sem dados de cartão (Sucesso 200 + Código Pix)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Deve aprovar Pix retornando pixCode simulado e sem lastDigits', function () {",
+                  "    pm.expect(jsonData.status).to.eql('APROVADO');",
+                  "    pm.expect(jsonData.payment.method).to.eql('Pix');",
+                  "    pm.expect(jsonData.payment.pixCode).to.be.a('string').and.include('br.gov.bcb.pix');",
+                  "    pm.expect(jsonData.payment.lastDigits).to.be.undefined;",
+                  "    pm.expect(jsonData.payment.amount).to.eql(59.90);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"{{pixCartId}}\",\n  \"paymentMethod\": {\n    \"name\": \"Pix\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "checkout"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Cenários de Falha e Regras de Negócio (4xx + frontendError)",
+      "item": [
+        {
+          "name": "3.1 Pré-Checkout - Produto Inexistente (Erro 404 + frontendError)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Deve retornar erro de produto inválido no padrão frontendError', function () {",
+                  "    pm.expect(jsonData.displayType).to.eql('BLOCK');",
+                  "    pm.expect(jsonData.errorCode).to.eql('PRODUCT_NOT_FOUND');",
+                  "    pm.expect(jsonData.frontendError.code).to.eql('P-1002');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"products\": [\n    { \"slug\": \"plano-inexistente\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/pre-checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "pre-checkout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.2 Checkout - Carrinho Inexistente (Erro 404 + frontendError)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Deve retornar CART_NOT_FOUND no padrão frontendError', function () {",
+                  "    pm.expect(jsonData.displayType).to.eql('BLOCK');",
+                  "    pm.expect(jsonData.errorCode).to.eql('CART_NOT_FOUND');",
+                  "    pm.expect(jsonData.frontendError.code).to.eql('P-1003');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"00000000-0000-0000-0000-000000000000\",\n  \"paymentMethod\": {\n    \"name\": \"Pix\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "checkout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.3 Checkout - Meio de Pagamento Não Disponível (Erro 400 + INTERVENTION)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Deve retornar INTERVENTION no padrão frontendError', function () {",
+                  "    pm.expect(jsonData.displayType).to.eql('INTERVENTION');",
+                  "    pm.expect(jsonData.errorCode).to.eql('INVALID_PAYMENT_METHOD');",
+                  "    pm.expect(jsonData.frontendError.code).to.eql('P-1004');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"{{pixCartId}}\",\n  \"paymentMethod\": {\n    \"name\": \"Boleto Bancário\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "checkout"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
