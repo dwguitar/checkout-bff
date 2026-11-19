@@ -50,6 +50,17 @@ public final class ErrorCatalog {
             null
     );
 
+    public static final FrontendErrorSpec CHECKOUT_IN_PROGRESS = new FrontendErrorSpec(
+            "INTERVENTION",
+            "CHECKOUT_IN_PROGRESS",
+            409,
+            "P-1006",
+            "Pagamento em processamento",
+            "Já existe uma tentativa de pagamento em andamento para este carrinho.",
+            new FrontendErrorSpec.ActionButton("Aguardar", "RETRY"),
+            null
+    );
+
     public static final FrontendErrorSpec PAYMENT_DECLINED = new FrontendErrorSpec(
             "BLOCK",
             "PAYMENT_DECLINED",

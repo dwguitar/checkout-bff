@@ -2,7 +2,6 @@ package com.dw.checkout.infrastructure.in.web;
 
 import com.dw.checkout.domain.exception.CheckoutBusinessException;
 import com.dw.checkout.domain.exception.ErrorCatalog;
-import com.dw.checkout.infrastructure.adapter.in.messasing.RabbitMQPaymentConsumer;
 import com.dw.checkout.infrastructure.adapter.in.web.generated.model.CheckoutErrorResponse;
 import com.dw.checkout.infrastructure.observability.CheckoutMetrics;
 import org.slf4j.Logger;
@@ -19,7 +18,7 @@ public class GlobalExceptionHandler {
 
     private final CheckoutWebMapper mapper;
     private final CheckoutMetrics checkoutMetrics;
-    private static final Logger log = LoggerFactory.getLogger(RabbitMQPaymentConsumer.class);
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     public GlobalExceptionHandler(CheckoutWebMapper mapper, CheckoutMetrics checkoutMetrics) {
         this.mapper = mapper;
@@ -31,7 +30,8 @@ public class GlobalExceptionHandler {
         var spec = ex.getErrorSpec();
         var response = mapper.toErrorResponse(spec, ex.getCartId());
         checkoutMetrics.recordBusinessError(ex.getErrorSpec().errorCode());
-        log.warn("Erro de negócio no checkout | cartId={} | errorCode={} | displayType={}");
+        log.warn("Erro de negócio no checkout | cartId={} | errorCode={} | displayType={}",
+                ex.getCartId(), spec.errorCode(), spec.displayType());
         return ResponseEntity.status(spec.httpStatus()).body(response);
     }
 

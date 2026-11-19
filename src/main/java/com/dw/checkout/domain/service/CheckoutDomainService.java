@@ -10,6 +10,7 @@ import com.dw.checkout.domain.event.CheckoutPaymentEvent;
 import com.dw.checkout.domain.exception.CheckoutBusinessException;
 import com.dw.checkout.domain.exception.ErrorCatalog;
 import com.dw.checkout.domain.model.Cart;
+import com.dw.checkout.domain.model.CartStatus;
 import com.dw.checkout.domain.model.PaymentMethod;
 import com.dw.checkout.domain.model.PaymentReceipt;
 import com.dw.checkout.domain.model.Product;
@@ -39,6 +40,10 @@ public class CheckoutDomainService implements ProcessCheckoutUseCase {
             throw new CheckoutBusinessException(ErrorCatalog.CART_ALREADY_APPROVED, cart.getCartId());
         }
 
+        if (cart.getStatus() == CartStatus.PROCESSING) {
+            throw new CheckoutBusinessException(ErrorCatalog.CHECKOUT_IN_PROGRESS, cart.getCartId());
+        }
+
         if (!cart.supportsPaymentMethod(command.paymentMethodName())) {
             throw new CheckoutBusinessException(ErrorCatalog.INVALID_PAYMENT_METHOD, cart.getCartId());
         }
@@ -47,6 +52,14 @@ public class CheckoutDomainService implements ProcessCheckoutUseCase {
 
         if (method.isCard() && command.cardData() == null) {
             throw new CheckoutBusinessException(ErrorCatalog.INVALID_PAYMENT_METHOD, cart.getCartId());
+        }
+
+        if (!cartRepositoryPort.tryStartPayment(cart.getCartId())) {
+            Cart latestCart = cartRepositoryPort.findById(cart.getCartId()).orElse(cart);
+            var error = latestCart.isApproved()
+                    ? ErrorCatalog.CART_ALREADY_APPROVED
+                    : ErrorCatalog.CHECKOUT_IN_PROGRESS;
+            throw new CheckoutBusinessException(error, cart.getCartId());
         }
 
         var result = paymentGatewayPort.charge(

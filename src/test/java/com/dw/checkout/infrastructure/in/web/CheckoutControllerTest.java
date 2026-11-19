@@ -2,6 +2,7 @@ package com.dw.checkout.infrastructure.in.web;
 
 import com.dw.checkout.application.port.in.CreatePreCheckoutUseCase;
 import com.dw.checkout.application.port.in.ProcessCheckoutUseCase;
+import com.dw.checkout.CheckoutBffApplication;
 import com.dw.checkout.domain.exception.CheckoutBusinessException;
 import com.dw.checkout.domain.exception.ErrorCatalog;
 import com.dw.checkout.domain.model.Cart;
@@ -18,6 +19,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -38,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = CheckoutController.class)
+@ContextConfiguration(classes = CheckoutBffApplication.class)
 @Import({CheckoutWebMapper.class, GlobalExceptionHandler.class, CorrelationIdFilter.class})
 class CheckoutControllerWebMvcTest {
 
