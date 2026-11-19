@@ -114,7 +114,7 @@ Gere os fontes do contrato OpenAPI e execute a aplicação:
 | PostgreSQL | `localhost:5432` | Banco `checkout_db`, usuário/senha `checkout`/`checkout` |
 | Redis | `localhost:6379` | Cache dos adapters de catálogo e meios de pagamento |
 
-A configuração de cache de produção fica em `src/main/java/com/dw/checkout/infrastructure/config/CacheConfig.java`: cache `products` com TTL de 15 minutos e `paymentMethods` com TTL de 30 minutos. O TTL padrão é 10 minutos. A desserialização polimórfica é restrita a tipos do domínio e coleções Java.
+A configuração de cache de produção fica em `src/main/java/com/dw/checkout/infrastructure/config/CacheConfig.java`: cache `products` com TTL de 15 minutos e `paymentMethods` com TTL de 30 minutos. O TTL padrão é 10 minutos. Cada região usa um desserializador JSON tipado (`Product` ou `List<PaymentMethod>`), sem habilitar desserialização polimórfica global.
 
 ### Outbox e recuperação de pagamentos
 

@@ -68,6 +68,14 @@ class CheckoutIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.paymentMethods.length()").value(3))
                 .andReturn().getResponse().getContentAsString();
 
+        // The second call exercises Redis deserialization for both cache regions.
+        mockMvc.perform(post("/operations/pre-checkout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(preCheckoutBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.products[0].slug").value("premium"))
+                .andExpect(jsonPath("$.paymentMethods.length()").value(3));
+
         JsonNode preJson = objectMapper.readTree(preResponseStr);
         String cartId = preJson.get("cartId").asText();
 
