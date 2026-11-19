@@ -94,10 +94,33 @@ Gere os fontes do contrato OpenAPI e execute a aplicação:
 ```bash
 ./mvnw clean spring-boot:run
 ```
-Endpoints Úteis e Interfaces de ApoioServiço / FerramentaURL / PortaCredenciais / ObservaçõesCheckout BFF APIhttp://localhost:8080Endpoints /operations/pre-checkout e /operations/checkoutSwagger UI (OpenAPI)http://localhost:8080/swagger-ui.htmlDocumentação interativa gerada a partir do YAMLActuator Healthhttp://localhost:8080/actuator/healthStatus integrado de PostgreSQL, RabbitMQ e RedisMétricas Micrometerhttp://localhost:8080/actuator/metrics/checkout.payments.totalContadores de pagamentos aprovados e recusadosRabbitMQ Managementhttp://localhost:15672Usuário: guest | Senha: guestPostgreSQL 16localhost:5432Banco: checkout_db | Usuário: checkout | Senha: checkoutRedis 7 (Cache)localhost:6379Inspeção rápida: docker exec -it checkout-redis redis-cli KEYS "*"
 
+### Endpoints Úteis e Interfaces de ApoioServiço / FerramentaURL / PortaCredenciais / Observações 
 
-Testes Automatizados e Cobertura (JaCoCo)
+### Checkout BFF API 
+http://localhost:8080 
+
+### Endpoints /operations/pre-checkout e /operations/checkoutSwagger UI (OpenAPI)
+http://localhost:8080/swagger-ui.html 
+
+### Documentação interativa gerada a partir do YAML Actuator Health 
+
+http://localhost:8080/actuator/health 
+
+### Status integrado de PostgreSQL, RabbitMQ e RedisMétricas Micrometer 
+http://localhost:8080/actuator/metrics/checkout.payments.total 
+
+### Contadores de pagamentos aprovados e recusadosRabbitMQ Management 
+
+http://localhost:15672 
+Usuário: guest | Senha: guestPostgreSQL 16localhost:5432Banco: checkout_db | Usuário: checkout | Senha: checkoutRedis 7 (Cache)localhost:6379 
+Inspeção rápida: 
+
+```bash
+docker exec -it checkout-redis redis-cli KEYS "*"
+```
+
+### Testes Automatizados e Cobertura (JaCoCo)
 A suíte combina testes unitários de domínio (JUnit 5 + Mockito), testes da camada Web (@WebMvcTest) e testes de integração ponta a ponta com banco real via Testcontainers (certifique-se de que o Docker esteja ativo antes de rodar):
 
 ### Executar toda a suíte de testes e gerar relatório de cobertura:
@@ -106,18 +129,21 @@ A suíte combina testes unitários de domínio (JUnit 5 + Mockito), testes da ca
 ./mvnw clean test
 ```
 
-Abrir o relatório visual do JaCoCo no navegador (macOS / Linux):
+### Abrir o relatório visual do JaCoCo no navegador (macOS / Linux):
 open target/site/jacoco/index.html
 
 ### Executar a Collection Automatizada no Postman:
 
 Importe o arquivo docs/postman/checkout-bff-postman-collection.json no Postman.
 
-Execute via Collection Runner para validar automaticamente os 9 cenários (pré-checkout, erro de produto inexistente, recusa cartão 0002, aprovação cartão 4242, bloqueio de duplicidade 409, pagamento Pix e métricas Actuator).
+Execute via Collection Runner para validar automaticamente os 9 cenários:
+(pré-checkout, erro de produto inexistente, recusa cartão 0002, aprovação cartão 4242, bloqueio de duplicidade 409, pagamento Pix e métricas Actuator).
 
-Exemplos de Uso via cURL
+### Exemplos de Uso via cURL
+
 ### 1. Iniciar Pré-Checkout
-Catálogo simulado disponível: basico (R$ 19,90), premium (R$ 39,90) e familia (R$ 59,90).
+Catálogo simulado disponível: 
+basico (R$ 19,90), premium (R$ 39,90) e familia (R$ 59,90).
 
 ```bash
 curl -i -X POST http://localhost:8080/operations/pre-checkout \
