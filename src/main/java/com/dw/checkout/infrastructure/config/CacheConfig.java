@@ -33,7 +33,8 @@ public class CacheConfig {
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
         BasicPolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
-                .allowIfBaseType(Object.class)
+                .allowIfSubType("com.dw.checkout.domain.model.")
+                .allowIfSubType("java.util.")
                 .build();
 
         objectMapper.activateDefaultTyping(

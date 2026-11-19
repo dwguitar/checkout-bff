@@ -13,11 +13,12 @@ O projeto foi desenhado para desacoplar completamente as regras de negócio da c
 - **Arquitetura Hexagonal (Ports & Adapters):**
   - `domain`: Regras de negócio puras (sem dependências de Spring ou JPA), modelos imutáveis (`record`), eventos de domínio (`CheckoutPaymentEvent`) e catálogo centralizado de erros (`ErrorCatalog`).
   - `application`: Casos de uso (`CreatePreCheckoutUseCase`, `ProcessCheckoutUseCase`) e portas de saída (`ProductCatalogPort`, `PaymentMethodPort`, `PaymentGatewayPort`, `CartRepositoryPort`, `PaymentEventPublisherPort`).
-  - `infrastructure`: Adaptadores de entrada REST (`CheckoutController` + `GlobalExceptionHandler`), mensageria assíncrona com RabbitMQ (`Producer` + `Consumer` com DLQ), clientes simulados desacoplados via interfaces com cache distribuído em **Redis 7** (`@Cacheable` + `GenericJackson2JsonRedisSerializer`), observabilidade (`CorrelationIdFilter` + `Micrometer`) e persistência em PostgreSQL (`Spring Data JPA`).
-- **Virtual Threads (Java 21 / Project Loom):** Habilitadas via `spring.threads.virtual.enabled=true` para maximizar a vazão de operações bloqueantes de I/O (orquestração de catálogo, cache Redis, gateway de pagamento, PostgreSQL e RabbitMQ) mantendo o código imperativo simples e legível.
-- **Contrato Estável de Erros (`CheckoutErrorResponse`):** Todas as falhas de negócio retornam HTTP `4xx` mantendo exatamente a mesma estrutura JSON (`displayType`, `errorCode`, `cartId` e `frontendError` com `code`, `title`, `description`, `primaryButton` e `secondaryButton`).
+  - `infrastructure`: Adaptadores REST (`CheckoutController` + `GlobalExceptionHandler`), publicação/consumo assíncrono com RabbitMQ e DLQ, adapters simulados de catálogo e pagamento, cache Redis configurado em `CacheConfig`, observabilidade (`CorrelationIdFilter` + Micrometer) e persistência PostgreSQL via Spring Data JPA.
+- **Virtual Threads (Java 21 / Project Loom):** Habilitadas em `spring.threads.virtual.enabled=true` no arquivo `src/main/resources/application.yaml` para operações bloqueantes de I/O.
+- **Contrato Estável de Erros (`CheckoutErrorResponse`):** Falhas de negócio retornam uma estrutura JSON padronizada (`displayType`, `errorCode`, `cartId` e `frontendError`). O contrato contempla carrinho em processamento (`CHECKOUT_IN_PROGRESS`, HTTP 409).
 - **Mensageria Orientada a Eventos (RabbitMQ):** A cada tentativa de checkout (aprovada ou recusada), um evento `CheckoutPaymentEvent` é publicado na exchange `checkout.events.exchange` e processado de forma assíncrona pela fila `checkout.payment.processed.queue` (com Dead Letter Queue `checkout.payment.processed.dlq` configurada para resiliência).
-- **Segurança e Conformidade (PCI-DSS):** O número completo do cartão e o CVV nunca são persistidos no banco de dados, logados ou retornados nas respostas — apenas os 4 últimos dígitos (`lastDigits`).
+- **Proteção contra cobranças concorrentes:** Antes de chamar o gateway, o sistema faz uma atualização condicional no PostgreSQL para reservar o carrinho em `PROCESSING`. Apenas uma requisição consegue iniciar a cobrança; as concorrentes recebem HTTP 409. Carrinhos `DECLINED` podem iniciar uma nova tentativa. Se o gateway terminar com resultado incerto, o carrinho permanece `PROCESSING` e requer reconciliação antes de uma nova tentativa.
+- **Minimização de dados de cartão:** O número completo e o CVV não são persistidos, registrados em log nem retornados; o recibo guarda somente os 4 últimos dígitos (`lastDigits`).
 - **Observabilidade e Rastreabilidade:** Propagação automática de `X-Correlation-Id` (MDC nos logs e header HTTP de resposta), health checks detalhados e métricas customizadas de negócio (`checkout.payments.total` e `checkout.errors.total`).
 
 ---
@@ -33,11 +34,14 @@ O projeto foi desenhado para desacoplar completamente as regras de negócio da c
 │   │   ├── java/com/dw/checkout/
 │   │   │   ├── application/                       # Portas de entrada (UseCases) e saída (Ports)
 │   │   │   ├── domain/                            # Modelos, regras puras, eventos e ErrorCatalog
-│   │   │   └── infrastructure/                    # Web (REST/Swagger), RabbitMQ, Redis, JPA, Observability
+│   │   │   └── infrastructure/                    # Web, RabbitMQ, Redis, JPA e observabilidade
 │   │   └── resources/
 │   │       ├── openapi/checkout-bff-api.yaml      # Contrato OpenAPI 3.0 (API-First)
-│   │       └── application.yml                    # Configurações de banco, Redis, RabbitMQ e Actuator
-│   └── test/                                      # Testes unitários (JUnit 5/Mockito) e integração (Testcontainers)
+│   │       └── application.yaml                   # Banco, Redis, RabbitMQ, Actuator e virtual threads
+│   └── test/java/com/dw/checkout/
+│       ├── domain/service/                        # Testes unitários (JUnit 5/Mockito)
+│       └── infrastructure/                       # Testes MVC e integração (Testcontainers)
+├── src/main/java/com/dw/checkout/infrastructure/config/CacheConfig.java # TTLs e serialização Redis
 ├── Dockerfile                                     # Build da imagem da aplicação Java 21
 ├── docker-compose.yml                             # Orquestração de PostgreSQL, RabbitMQ, Redis e Checkout BFF
 └── pom.xml                                        # Dependências, OpenAPI Generator e JaCoCo
@@ -95,33 +99,24 @@ Gere os fontes do contrato OpenAPI e execute a aplicação:
 ./mvnw clean spring-boot:run
 ```
 
-### Endpoints Úteis e Interfaces de ApoioServiço / FerramentaURL / PortaCredenciais / Observações 
+## Endpoints e serviços locais
 
-### Checkout BFF API 
-http://localhost:8080 
+| Serviço | Endereço | Observações |
+|---|---|---|
+| Checkout BFF | `http://localhost:8080` | API REST |
+| Pré-checkout | `POST /operations/pre-checkout` | Inicia um carrinho |
+| Checkout | `POST /operations/checkout` | Processa o pagamento |
+| Swagger UI | `http://localhost:8080/swagger-ui.html` | Documentação interativa |
+| Health | `http://localhost:8080/actuator/health` | Estado das dependências |
+| Métricas de pagamento | `http://localhost:8080/actuator/metrics/checkout.payments.total` | Contadores Micrometer |
+| RabbitMQ Management | `http://localhost:15672` | Usuário/senha local: `guest`/`guest` |
+| PostgreSQL | `localhost:5432` | Banco `checkout_db`, usuário/senha `checkout`/`checkout` |
+| Redis | `localhost:6379` | Cache dos adapters de catálogo e meios de pagamento |
 
-### Endpoints /operations/pre-checkout e /operations/checkoutSwagger UI (OpenAPI)
-http://localhost:8080/swagger-ui.html 
-
-### Documentação interativa gerada a partir do YAML Actuator Health 
-
-http://localhost:8080/actuator/health 
-
-### Status integrado de PostgreSQL, RabbitMQ e RedisMétricas Micrometer 
-http://localhost:8080/actuator/metrics/checkout.payments.total 
-
-### Contadores de pagamentos aprovados e recusadosRabbitMQ Management 
-
-http://localhost:15672 
-Usuário: guest | Senha: guestPostgreSQL 16localhost:5432Banco: checkout_db | Usuário: checkout | Senha: checkoutRedis 7 (Cache)localhost:6379 
-Inspeção rápida: 
-
-```bash
-docker exec -it checkout-redis redis-cli KEYS "*"
-```
+A configuração de cache de produção fica em `src/main/java/com/dw/checkout/infrastructure/config/CacheConfig.java`: cache `products` com TTL de 15 minutos e `paymentMethods` com TTL de 30 minutos. O TTL padrão é 10 minutos. A desserialização polimórfica é restrita a tipos do domínio e coleções Java.
 
 ### Testes Automatizados e Cobertura (JaCoCo)
-A suíte combina testes unitários de domínio (JUnit 5 + Mockito), testes da camada Web (@WebMvcTest) e testes de integração ponta a ponta com banco real via Testcontainers (certifique-se de que o Docker esteja ativo antes de rodar):
+A suíte combina testes unitários de domínio (JUnit 5 + Mockito), testes da camada Web (`@WebMvcTest`) e testes de integração com PostgreSQL, Redis e RabbitMQ via Testcontainers. Os testes de integração são ignorados quando o Docker não está disponível; com Docker ativo, todos os containers são inicializados pelo Testcontainers.
 
 ### Executar toda a suíte de testes e gerar relatório de cobertura:
 
@@ -130,7 +125,12 @@ A suíte combina testes unitários de domínio (JUnit 5 + Mockito), testes da ca
 ```
 
 ### Abrir o relatório visual do JaCoCo no navegador (macOS / Linux):
+
+```bash
 open target/site/jacoco/index.html
+```
+
+Na última validação do projeto, `./mvnw clean test` concluiu com 18 testes, sem falhas ou erros. O total pode mudar conforme novos testes forem adicionados.
 
 ### Executar a Collection Automatizada no Postman:
 

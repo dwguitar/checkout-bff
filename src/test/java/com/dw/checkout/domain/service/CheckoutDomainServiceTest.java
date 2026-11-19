@@ -80,6 +80,7 @@ class CheckoutDomainServiceTest {
         var card = new CardData("Ana Souza", "4111111111114242", "12/28", "123");
 
         when(cartRepositoryPort.findById(cart.getCartId())).thenReturn(Optional.of(cart));
+        when(cartRepositoryPort.tryStartPayment(cart.getCartId())).thenReturn(true);
         when(paymentGatewayPort.charge(any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(true, null));
         when(cartRepositoryPort.save(any(Cart.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -97,6 +98,7 @@ class CheckoutDomainServiceTest {
         Cart cart = createSampleCart();
 
         when(cartRepositoryPort.findById(cart.getCartId())).thenReturn(Optional.of(cart));
+        when(cartRepositoryPort.tryStartPayment(cart.getCartId())).thenReturn(true);
         when(paymentGatewayPort.charge(any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(true, "000201PIXCODE"));
         when(cartRepositoryPort.save(any(Cart.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -115,6 +117,7 @@ class CheckoutDomainServiceTest {
         var declinedCard = new CardData("Ana Souza", "4111111111110002", "12/28", "123");
 
         when(cartRepositoryPort.findById(cart.getCartId())).thenReturn(Optional.of(cart));
+        when(cartRepositoryPort.tryStartPayment(cart.getCartId())).thenReturn(true);
         when(paymentGatewayPort.charge(any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(false, null));
         when(cartRepositoryPort.save(any(Cart.class))).thenAnswer(inv -> inv.getArgument(0));
 

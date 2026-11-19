@@ -7,6 +7,7 @@ import com.dw.checkout.domain.model.PaymentMethod;
 import com.dw.checkout.domain.model.PaymentReceipt;
 import com.dw.checkout.domain.model.Product;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +31,12 @@ public class CartPersistenceAdapter implements CartRepositoryPort {
     @Override
     public Optional<Cart> findById(UUID cartId) {
         return repository.findById(cartId).map(this::toDomain);
+    }
+
+    @Override
+    @Transactional
+    public boolean tryStartPayment(UUID cartId) {
+        return repository.claimForPayment(cartId) == 1;
     }
 
     private CartJpaEntity toEntity(Cart cart) {
