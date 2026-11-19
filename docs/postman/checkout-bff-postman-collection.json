@@ -20,6 +20,11 @@
       "key": "pixCartId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "debitCartId",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -436,6 +441,46 @@
           }
         },
         {
+          "name": "3.3 Pré-Checkout - Carrinho para meio de pagamento inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.collectionVariables.set('invalidPaymentCartId', pm.response.json().cartId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"products\": [\n    { \"slug\": \"premium\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/pre-checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "pre-checkout"
+              ]
+            }
+          }
+        },
+        {
           "name": "3.3 Checkout - Meio de Pagamento Não Disponível (Erro 400 + INTERVENTION)",
           "event": [
             {
@@ -467,7 +512,117 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cartId\": \"{{pixCartId}}\",\n  \"paymentMethod\": {\n    \"name\": \"Boleto Bancário\"\n  }\n}"
+              "raw": "{\n  \"cartId\": \"{{invalidPaymentCartId}}\",\n  \"paymentMethod\": {\n    \"name\": \"Boleto Bancário\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "checkout"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Fluxo Cartão de Débito - Plano Básico",
+      "item": [
+        {
+          "name": "4.1 Pré-Checkout - Plano Básico (Sucesso 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Deve retornar o Plano Básico e salvar o cartId para o fluxo de débito', function () {",
+                  "    pm.expect(jsonData.products).to.have.lengthOf(1);",
+                  "    pm.expect(jsonData.products[0].slug).to.eql('basico');",
+                  "    pm.expect(jsonData.products[0].price).to.eql(19.90);",
+                  "    pm.collectionVariables.set('debitCartId', jsonData.cartId);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"products\": [{ \"slug\": \"basico\" }]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/operations/pre-checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "pre-checkout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.2 Checkout - Cartão de Débito aprovado (Sucesso 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status HTTP deve ser 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Deve aprovar o débito e mascarar os dados do cartão', function () {",
+                  "    pm.expect(jsonData.cartId).to.eql(pm.collectionVariables.get('debitCartId'));",
+                  "    pm.expect(jsonData.status).to.eql('APROVADO');",
+                  "    pm.expect(jsonData.payment.method).to.eql('Cartão de Débito');",
+                  "    pm.expect(jsonData.payment.lastDigits).to.eql('4242');",
+                  "    pm.expect(jsonData.payment.amount).to.eql(19.90);",
+                  "    pm.expect(jsonData.payment.currency).to.eql('BRL');",
+                  "    pm.expect(JSON.stringify(jsonData)).to.not.include('4111111111114242');",
+                  "    pm.expect(JSON.stringify(jsonData)).to.not.include('cvv');",
+                  "});",
+                  "pm.test('Deve propagar o X-Correlation-Id enviado', function () {",
+                  "    pm.expect(pm.response.headers.get('X-Correlation-Id')).to.eql('teste-curl-005');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "teste-curl-005"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"{{debitCartId}}\",\n  \"paymentMethod\": {\n    \"name\": \"Cartão de Débito\",\n    \"card\": {\n      \"holderName\": \"Ana Souza\",\n      \"number\": \"4111111111114242\",\n      \"expiry\": \"12/28\",\n      \"cvv\": \"123\"\n    }\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/operations/checkout",

@@ -49,6 +49,18 @@ public class CartJpaEntity {
     @Column(name = "paid_at")
     private Instant paidAt;
 
+    @Column(name = "payment_attempt_method")
+    private String paymentAttemptMethod;
+
+    @Column(name = "payment_attempt_card_last_digits", length = 4)
+    private String paymentAttemptCardLastDigits;
+
+    @Column(name = "payment_processing_at")
+    private Instant paymentProcessingAt;
+
+    @Column(name = "payment_attempt_id")
+    private UUID paymentAttemptId;
+
     public CartJpaEntity() {}
 
     @Embeddable
@@ -96,4 +108,12 @@ public class CartJpaEntity {
     public void setCurrency(String currency) { this.currency = currency; }
     public Instant getPaidAt() { return paidAt; }
     public void setPaidAt(Instant paidAt) { this.paidAt = paidAt; }
+    public String getPaymentAttemptMethod() { return paymentAttemptMethod; }
+    public void setPaymentAttemptMethod(String paymentAttemptMethod) { this.paymentAttemptMethod = paymentAttemptMethod; }
+    public String getPaymentAttemptCardLastDigits() { return paymentAttemptCardLastDigits; }
+    public void setPaymentAttemptCardLastDigits(String paymentAttemptCardLastDigits) { this.paymentAttemptCardLastDigits = paymentAttemptCardLastDigits; }
+    public Instant getPaymentProcessingAt() { return paymentProcessingAt; }
+    public void setPaymentProcessingAt(Instant paymentProcessingAt) { this.paymentProcessingAt = paymentProcessingAt; }
+    public UUID getPaymentAttemptId() { return paymentAttemptId; }
+    public void setPaymentAttemptId(UUID paymentAttemptId) { this.paymentAttemptId = paymentAttemptId; }
 }

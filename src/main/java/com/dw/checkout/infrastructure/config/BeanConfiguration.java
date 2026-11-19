@@ -1,9 +1,8 @@
 package com.dw.checkout.infrastructure.config;
 
 import com.dw.checkout.application.port.in.CreatePreCheckoutUseCase;
-import com.dw.checkout.application.port.in.ProcessCheckoutUseCase;
 import com.dw.checkout.application.port.out.CartRepositoryPort;
-import com.dw.checkout.application.port.out.PaymentEventPublisherPort;
+import com.dw.checkout.application.port.out.CheckoutCompletionPort;
 import com.dw.checkout.application.port.out.PaymentGatewayPort;
 import com.dw.checkout.application.port.out.PaymentMethodPort;
 import com.dw.checkout.application.port.out.ProductCatalogPort;
@@ -12,11 +11,13 @@ import com.dw.checkout.domain.service.PreCheckoutDomainService;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 
 
 @Configuration
 @EnableCaching
+@EnableScheduling
 public class BeanConfiguration {
 
     @Bean
@@ -27,10 +28,10 @@ public class BeanConfiguration {
     }
 
     @Bean
-    public ProcessCheckoutUseCase processCheckoutUseCase(CartRepositoryPort cartRepositoryPort,
-                                                         PaymentGatewayPort paymentGatewayPort,
-                                                         PaymentEventPublisherPort paymentEventPublisherPort) {
-        return new CheckoutDomainService(cartRepositoryPort, paymentGatewayPort, paymentEventPublisherPort);
+    public CheckoutDomainService checkoutDomainService(CartRepositoryPort cartRepositoryPort,
+                                                       PaymentGatewayPort paymentGatewayPort,
+                                                       CheckoutCompletionPort checkoutCompletionPort) {
+        return new CheckoutDomainService(cartRepositoryPort, paymentGatewayPort, checkoutCompletionPort);
     }
 
 }

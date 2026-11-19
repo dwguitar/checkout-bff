@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -18,7 +19,7 @@ public class SimulatedPaymentGatewayAdapter implements PaymentGatewayPort {
     private static final String DECLINED_CARD_SUFFIX = "0002";
 
     @Override
-    public PaymentResult charge(UUID cartId, PaymentMethod method, CardData cardData, BigDecimal amount) {
+    public PaymentResult charge(UUID cartId, UUID attemptId, PaymentMethod method, CardData cardData, BigDecimal amount) {
         String maskedCard = (cardData != null) ? "****" + cardData.lastDigits() : "N/A";
         log.info("Chamando gateway de pagamento | cartId={} | metodo={} | cartao={} | valor={}",
                 cartId, method.name(), maskedCard, amount);
@@ -33,6 +34,19 @@ public class SimulatedPaymentGatewayAdapter implements PaymentGatewayPort {
 
         log.warn("Meio de pagamento não suportado no gateway | cartId={} | metodo={}", cartId, method.name());
         return new PaymentResult(false, null);
+    }
+
+    @Override
+    public Optional<PaymentResult> findPaymentStatus(PaymentAttempt attempt) {
+        PaymentMethod method = new PaymentMethod(attempt.method());
+        if (method.isCard()) {
+            return Optional.of(new PaymentResult(
+                    attempt.cardLastDigits() == null || !attempt.cardLastDigits().endsWith(DECLINED_CARD_SUFFIX), null));
+        }
+        if (method.isPix()) {
+            return Optional.of(new PaymentResult(true, createPixCode(attempt.cartId(), attempt.amount())));
+        }
+        return Optional.of(new PaymentResult(false, null));
     }
 
     private PaymentResult processCardPayment(UUID cartId, CardData cardData) {
@@ -52,14 +66,18 @@ public class SimulatedPaymentGatewayAdapter implements PaymentGatewayPort {
     }
 
     private PaymentResult processPixPayment(UUID cartId, BigDecimal amount) {
-        String simulatedPixCode = String.format(
+        String simulatedPixCode = createPixCode(cartId, amount);
+
+        log.info("Cobrança Pix gerada e aprovada pelo gateway | cartId={}", cartId);
+        return new PaymentResult(true, simulatedPixCode);
+    }
+
+    private String createPixCode(UUID cartId, BigDecimal amount) {
+        return String.format(
                 Locale.US,
                 "00020126580014br.gov.bcb.pix0136%s5204000053039865405%.2f5802BR5913CKW Assinatura6009SAO PAULO6304ABCD",
                 cartId,
                 amount
         );
-
-        log.info("Cobrança Pix gerada e aprovada pelo gateway | cartId={}", cartId);
-        return new PaymentResult(true, simulatedPixCode);
     }
 }
