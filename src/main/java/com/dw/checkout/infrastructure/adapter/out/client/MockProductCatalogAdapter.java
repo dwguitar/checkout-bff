@@ -38,7 +38,9 @@ public class MockProductCatalogAdapter implements ProductCatalogPort {
     );
 
     @Override
-    @Cacheable(value = "products", key = "#slug.toLowerCase()")
+    // Optional.empty() is unwrapped to null by Spring's cache abstraction.
+    // Do not cache that miss: RedisCache is configured to reject null values.
+    @Cacheable(value = "products", key = "#slug.toLowerCase()", unless = "#result == null")
     public Optional<Product> findBySlug(String slug) {
         if (slug == null) {
             return Optional.empty();

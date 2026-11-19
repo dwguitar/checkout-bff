@@ -52,6 +52,23 @@ class CheckoutIntegrationTest extends AbstractIntegrationTest {
     @Autowired private RecoverStuckPaymentsUseCase recoveryUseCase;
 
     @Test
+    @DisplayName("Slug inexistente retorna 404 sem tentar cachear Optional.empty")
+    void shouldReturnProductNotFoundForUncachedCatalogMiss() throws Exception {
+        String requestBody = """
+                { "products": [{ "slug": "plano-inexistente" }] }
+                """;
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mockMvc.perform(post("/operations/pre-checkout")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.errorCode").value("PRODUCT_NOT_FOUND"))
+                    .andExpect(jsonPath("$.frontendError.code").value("P-1002"));
+        }
+    }
+
+    @Test
     @DisplayName("Fluxo completo: Pré-checkout -> Recusa (0002) -> Sucesso (4242) -> Bloqueio duplicidade")
     void shouldExecuteFullCheckoutLifecycle() throws Exception {
         // 1. Pré-checkout
