@@ -85,7 +85,7 @@ class CheckoutDomainServiceTest {
 
         Cart approved = checkoutService.execute(new ProcessCheckoutUseCase.CheckoutCommand(cart.getCartId(), "Cartão de Crédito", card));
 
-        assertEquals(CartStatus.APROVADO, approved.getStatus());
+        assertEquals(CartStatus.APPROVED, approved.getStatus());
         assertEquals("4242", approved.getReceipt().lastDigits());
         assertNull(approved.getReceipt().pixCode());
         verify(paymentEventPublisherPort).publish(any(CheckoutPaymentEvent.class));
@@ -102,7 +102,7 @@ class CheckoutDomainServiceTest {
 
         Cart approved = checkoutService.execute(new ProcessCheckoutUseCase.CheckoutCommand(cart.getCartId(), "Pix", null));
 
-        assertEquals(CartStatus.APROVADO, approved.getStatus());
+        assertEquals(CartStatus.APPROVED, approved.getStatus());
         assertEquals("000201PIXCODE", approved.getReceipt().pixCode());
         assertNull(approved.getReceipt().lastDigits());
         verify(paymentEventPublisherPort).publish(any(CheckoutPaymentEvent.class));

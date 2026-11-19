@@ -8,6 +8,10 @@ services:
       POSTGRES_PASSWORD: checkout
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - checkout-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U checkout -d checkout_db"]
       interval: 5s
@@ -23,10 +27,25 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    networks:
+      - checkout-network
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: checkout-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - checkout-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 5
 
   checkout-bff:
@@ -37,6 +56,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/checkout_db
       DB_USER: checkout
@@ -45,5 +66,16 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: guest
       RABBITMQ_PASSWORD: guest
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
     ports:
       - "8080:8080"
+    networks:
+      - checkout-network
+
+volumes:
+  postgres_data:
+
+networks:
+  checkout-network:
+    driver: bridge

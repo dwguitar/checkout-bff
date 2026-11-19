@@ -1,5 +1,6 @@
 package com.dw.checkout.infrastructure.observability;
 
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
@@ -10,14 +11,22 @@ public class CheckoutMetrics {
 
     public CheckoutMetrics(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
+        // Pré-registra as séries principais com 0 para evitar 404 antes do primeiro pagamento
+        registerCounter("Cartão de Crédito", "APPROVED");
+        registerCounter("Cartão de Crédito", "DECLINED");
+        registerCounter("Pix", "APPROVED");
     }
 
-    public void recordPaymentAttempt(String paymentMethod, String status) {
-        meterRegistry.counter(
-                "checkout.payments.total",
-                "method", paymentMethod,
-                "status", status
-        ).increment();
+    public void recordPayment(String method, String status) {
+        registerCounter(method, status).increment();
+    }
+
+    private Counter registerCounter(String method, String status) {
+        return Counter.builder("checkout.payments.total")
+                .description("Total de pagamentos processados no checkout")
+                .tag("method", method)
+                .tag("status", status)
+                .register(meterRegistry);
     }
 
     public void recordBusinessError(String errorCode) {

@@ -29,6 +29,9 @@ public class PreCheckoutDomainService implements CreatePreCheckoutUseCase {
 
     @Override
     public Cart execute(List<String> productSlugs) {
+        if (productSlugs == null || productSlugs.isEmpty()) {
+            throw new CheckoutBusinessException(ErrorCatalog.PRODUCT_NOT_FOUND, null);
+        }
         List<Product> products = productSlugs.stream()
                 .map(slug -> productCatalogPort.findBySlug(slug)
                         .orElseThrow(() -> new CheckoutBusinessException(ErrorCatalog.PRODUCT_NOT_FOUND, null)))

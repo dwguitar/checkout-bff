@@ -1,6 +1,8 @@
 package com.dw.checkout.domain.model;
 
-public record PaymentMethod(String name) {
+import java.io.Serializable;
+
+public record PaymentMethod(String name) implements Serializable {
     public boolean isPix() {
         return "Pix".equalsIgnoreCase(name);
     }
