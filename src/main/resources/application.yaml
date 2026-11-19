@@ -21,6 +21,8 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASSWORD:guest}
+    publisher-confirm-type: correlated
+    publisher-returns: true
     listener:
       simple:
         default-requeue-rejected: false
@@ -56,3 +58,10 @@ management:
   endpoint:
     health:
       show-details: always
+
+checkout:
+  outbox:
+    poll-interval-ms: ${CHECKOUT_OUTBOX_POLL_INTERVAL_MS:1000}
+  payment-recovery:
+    interval-ms: ${CHECKOUT_PAYMENT_RECOVERY_INTERVAL_MS:30000}
+    timeout-ms: ${CHECKOUT_PAYMENT_RECOVERY_TIMEOUT_MS:120000}

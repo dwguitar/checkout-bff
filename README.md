@@ -16,8 +16,9 @@ O projeto foi desenhado para desacoplar completamente as regras de negócio da c
   - `infrastructure`: Adaptadores REST (`CheckoutController` + `GlobalExceptionHandler`), publicação/consumo assíncrono com RabbitMQ e DLQ, adapters simulados de catálogo e pagamento, cache Redis configurado em `CacheConfig`, observabilidade (`CorrelationIdFilter` + Micrometer) e persistência PostgreSQL via Spring Data JPA.
 - **Virtual Threads (Java 21 / Project Loom):** Habilitadas em `spring.threads.virtual.enabled=true` no arquivo `src/main/resources/application.yaml` para operações bloqueantes de I/O.
 - **Contrato Estável de Erros (`CheckoutErrorResponse`):** Falhas de negócio retornam uma estrutura JSON padronizada (`displayType`, `errorCode`, `cartId` e `frontendError`). O contrato contempla carrinho em processamento (`CHECKOUT_IN_PROGRESS`, HTTP 409).
-- **Mensageria Orientada a Eventos (RabbitMQ):** A cada tentativa de checkout (aprovada ou recusada), um evento `CheckoutPaymentEvent` é publicado na exchange `checkout.events.exchange` e processado de forma assíncrona pela fila `checkout.payment.processed.queue` (com Dead Letter Queue `checkout.payment.processed.dlq` configurada para resiliência).
-- **Proteção contra cobranças concorrentes:** Antes de chamar o gateway, o sistema faz uma atualização condicional no PostgreSQL para reservar o carrinho em `PROCESSING`. Apenas uma requisição consegue iniciar a cobrança; as concorrentes recebem HTTP 409. Carrinhos `DECLINED` podem iniciar uma nova tentativa. Se o gateway terminar com resultado incerto, o carrinho permanece `PROCESSING` e requer reconciliação antes de uma nova tentativa.
+- **Outbox transacional e RabbitMQ:** A conclusão do pagamento e a gravação do evento `CheckoutPaymentEvent` na tabela `checkout_outbox` acontecem na mesma transação PostgreSQL. Um publicador em background envia eventos pendentes para `checkout.events.exchange`, exige confirmação do broker e tenta novamente com espera exponencial quando a publicação falha. O consumidor registra `eventId` em `processed_payment_events` na mesma transação do processamento e ignora duplicatas. A entrega é pelo menos uma vez; o consumidor deve ser idempotente.
+- **Proteção contra cobranças concorrentes:** Antes de chamar o gateway, o sistema reserva o carrinho em `PROCESSING` com uma atualização condicional no PostgreSQL. Cada tentativa recebe um `attemptId` persistido, usado como chave idempotente no gateway e na outbox. Carrinhos `DECLINED` podem iniciar uma nova tentativa com outro `attemptId`; repetições da mesma tentativa mantêm a mesma chave.
+- **Reconciliação de pagamentos:** A cada 30 segundos, carrinhos em `PROCESSING` há pelo menos 2 minutos são consultados no gateway usando a mesma chave idempotente. Método e apenas os 4 últimos dígitos do cartão são persistidos para reconstruir o resultado. Se o gateway ainda não confirmar aprovação ou recusa, o carrinho segue bloqueado; não se inicia uma nova cobrança automaticamente. A consulta roda novamente após novo período de timeout.
 - **Minimização de dados de cartão:** O número completo e o CVV não são persistidos, registrados em log nem retornados; o recibo guarda somente os 4 últimos dígitos (`lastDigits`).
 - **Observabilidade e Rastreabilidade:** Propagação automática de `X-Correlation-Id` (MDC nos logs e header HTTP de resposta), health checks detalhados e métricas customizadas de negócio (`checkout.payments.total` e `checkout.errors.total`).
 
@@ -115,6 +116,15 @@ Gere os fontes do contrato OpenAPI e execute a aplicação:
 
 A configuração de cache de produção fica em `src/main/java/com/dw/checkout/infrastructure/config/CacheConfig.java`: cache `products` com TTL de 15 minutos e `paymentMethods` com TTL de 30 minutos. O TTL padrão é 10 minutos. A desserialização polimórfica é restrita a tipos do domínio e coleções Java.
 
+### Outbox e recuperação de pagamentos
+
+- `checkout_outbox` guarda os eventos que ainda precisam ser publicados. A chave `attempt_id` impede que a mesma tentativa gere mais de um evento, inclusive se a resposta do gateway e a reconciliação concluírem a tentativa quase ao mesmo tempo.
+- `spring.rabbitmq.publisher-confirm-type=correlated` e `publisher-returns=true` habilitam confirmação e detecção de mensagens sem rota. O dispatcher verifica a confirmação antes de marcar o evento como publicado.
+- Publicações com falha são liberadas para nova tentativa com atraso exponencial, limitado a 5 minutos. Uma lease de 10 minutos permite que outro processo retome eventos se o dispatcher cair durante o envio.
+- `processed_payment_events` fornece deduplicação por `eventId` no consumidor.
+- `checkout.payment-recovery.timeout-ms` (padrão: `120000`) e `checkout.payment-recovery.interval-ms` (padrão: `30000`) controlam quando pagamentos antigos são consultados novamente. `CHECKOUT_PAYMENT_RECOVERY_TIMEOUT_MS` e `CHECKOUT_PAYMENT_RECOVERY_INTERVAL_MS` podem sobrescrever esses valores. `CHECKOUT_OUTBOX_POLL_INTERVAL_MS` altera o intervalo do dispatcher (padrão: `1000`).
+- Um resultado desconhecido nunca é convertido automaticamente em recusa nem libera o carrinho para nova cobrança. Em uma integração real, o adapter do gateway deve consultar o pagamento pela chave `attemptId` e retornar aprovação/recusa somente quando houver confirmação definitiva. Resultado ainda desconhecido requer reconciliação operacional com o provedor antes de qualquer intervenção.
+
 ### Testes Automatizados e Cobertura (JaCoCo)
 A suíte combina testes unitários de domínio (JUnit 5 + Mockito), testes da camada Web (`@WebMvcTest`) e testes de integração com PostgreSQL, Redis e RabbitMQ via Testcontainers. Os testes de integração são ignorados quando o Docker não está disponível; com Docker ativo, todos os containers são inicializados pelo Testcontainers.
 
@@ -130,7 +140,7 @@ A suíte combina testes unitários de domínio (JUnit 5 + Mockito), testes da ca
 open target/site/jacoco/index.html
 ```
 
-Na última validação do projeto, `./mvnw clean test` concluiu com 18 testes, sem falhas ou erros. O total pode mudar conforme novos testes forem adicionados.
+Na última validação do projeto, `./mvnw clean test` concluiu com 22 testes, sem falhas, erros ou testes ignorados. A suíte incluiu integração com PostgreSQL, Redis e RabbitMQ, publicação confirmada pela outbox, deduplicação de eventos e recuperação de carrinho em processamento. O total pode mudar conforme novos testes forem adicionados.
 
 ### Executar a Collection Automatizada no Postman:
 

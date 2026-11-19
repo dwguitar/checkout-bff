@@ -2,7 +2,7 @@ package com.dw.checkout.domain.service;
 
 import com.dw.checkout.application.port.in.ProcessCheckoutUseCase;
 import com.dw.checkout.application.port.out.CartRepositoryPort;
-import com.dw.checkout.application.port.out.PaymentEventPublisherPort;
+import com.dw.checkout.application.port.out.CheckoutCompletionPort;
 import com.dw.checkout.application.port.out.PaymentGatewayPort;
 import com.dw.checkout.application.port.out.PaymentMethodPort;
 import com.dw.checkout.application.port.out.ProductCatalogPort;
@@ -32,7 +32,7 @@ class CheckoutDomainServiceTest {
     @Mock private PaymentMethodPort paymentMethodPort;
     @Mock private CartRepositoryPort cartRepositoryPort;
     @Mock private PaymentGatewayPort paymentGatewayPort;
-    @Mock private PaymentEventPublisherPort paymentEventPublisherPort;
+    @Mock private CheckoutCompletionPort checkoutCompletionPort;
 
     private PreCheckoutDomainService preCheckoutService;
     private CheckoutDomainService checkoutService;
@@ -40,7 +40,7 @@ class CheckoutDomainServiceTest {
     @BeforeEach
     void setUp() {
         preCheckoutService = new PreCheckoutDomainService(productCatalogPort, paymentMethodPort, cartRepositoryPort);
-        checkoutService = new CheckoutDomainService(cartRepositoryPort, paymentGatewayPort, paymentEventPublisherPort);
+        checkoutService = new CheckoutDomainService(cartRepositoryPort, paymentGatewayPort, checkoutCompletionPort);
     }
 
     @Test
@@ -78,36 +78,36 @@ class CheckoutDomainServiceTest {
     void shouldApproveCardCheckoutAndMaskDigits() {
         Cart cart = createSampleCart();
         var card = new CardData("Ana Souza", "4111111111114242", "12/28", "123");
+        stubCompletion();
 
         when(cartRepositoryPort.findById(cart.getCartId())).thenReturn(Optional.of(cart));
-        when(cartRepositoryPort.tryStartPayment(cart.getCartId())).thenReturn(true);
-        when(paymentGatewayPort.charge(any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(true, null));
-        when(cartRepositoryPort.save(any(Cart.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(cartRepositoryPort.tryStartPayment(eq(cart.getCartId()), anyString(), any(), any())).thenReturn(true);
+        when(paymentGatewayPort.charge(any(), any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(true, null));
 
         Cart approved = checkoutService.execute(new ProcessCheckoutUseCase.CheckoutCommand(cart.getCartId(), "Cartão de Crédito", card));
 
         assertEquals(CartStatus.APPROVED, approved.getStatus());
         assertEquals("4242", approved.getReceipt().lastDigits());
         assertNull(approved.getReceipt().pixCode());
-        verify(paymentEventPublisherPort).publish(any(CheckoutPaymentEvent.class));
+        verify(checkoutCompletionPort).saveAndEnqueue(any(Cart.class), any(CheckoutPaymentEvent.class));
     }
 
     @Test
     @DisplayName("Deve aprovar checkout com Pix gerando código Pix sem lastDigits e publicar evento")
     void shouldApprovePixCheckout() {
         Cart cart = createSampleCart();
+        stubCompletion();
 
         when(cartRepositoryPort.findById(cart.getCartId())).thenReturn(Optional.of(cart));
-        when(cartRepositoryPort.tryStartPayment(cart.getCartId())).thenReturn(true);
-        when(paymentGatewayPort.charge(any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(true, "000201PIXCODE"));
-        when(cartRepositoryPort.save(any(Cart.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(cartRepositoryPort.tryStartPayment(eq(cart.getCartId()), anyString(), any(), any())).thenReturn(true);
+        when(paymentGatewayPort.charge(any(), any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(true, "000201PIXCODE"));
 
         Cart approved = checkoutService.execute(new ProcessCheckoutUseCase.CheckoutCommand(cart.getCartId(), "Pix", null));
 
         assertEquals(CartStatus.APPROVED, approved.getStatus());
         assertEquals("000201PIXCODE", approved.getReceipt().pixCode());
         assertNull(approved.getReceipt().lastDigits());
-        verify(paymentEventPublisherPort).publish(any(CheckoutPaymentEvent.class));
+        verify(checkoutCompletionPort).saveAndEnqueue(any(Cart.class), any(CheckoutPaymentEvent.class));
     }
 
     @Test
@@ -115,11 +115,11 @@ class CheckoutDomainServiceTest {
     void shouldDeclineWhenGatewayRejects() {
         Cart cart = createSampleCart();
         var declinedCard = new CardData("Ana Souza", "4111111111110002", "12/28", "123");
+        stubCompletion();
 
         when(cartRepositoryPort.findById(cart.getCartId())).thenReturn(Optional.of(cart));
-        when(cartRepositoryPort.tryStartPayment(cart.getCartId())).thenReturn(true);
-        when(paymentGatewayPort.charge(any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(false, null));
-        when(cartRepositoryPort.save(any(Cart.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(cartRepositoryPort.tryStartPayment(eq(cart.getCartId()), anyString(), any(), any())).thenReturn(true);
+        when(paymentGatewayPort.charge(any(), any(), any(), any(), any())).thenReturn(new PaymentGatewayPort.PaymentResult(false, null));
 
         var ex = assertThrows(CheckoutBusinessException.class,
                 () -> checkoutService.execute(new ProcessCheckoutUseCase.CheckoutCommand(cart.getCartId(), "Cartão de Crédito", declinedCard)));
@@ -127,7 +127,7 @@ class CheckoutDomainServiceTest {
         assertEquals("PAYMENT_DECLINED", ex.getErrorSpec().errorCode());
         assertEquals("P-1001", ex.getErrorSpec().code());
         assertEquals(CartStatus.DECLINED, cart.getStatus());
-        verify(paymentEventPublisherPort).publish(any(CheckoutPaymentEvent.class));
+        verify(checkoutCompletionPort).saveAndEnqueue(any(Cart.class), any(CheckoutPaymentEvent.class));
     }
 
     @Test
@@ -142,7 +142,47 @@ class CheckoutDomainServiceTest {
                 () -> checkoutService.execute(new ProcessCheckoutUseCase.CheckoutCommand(cart.getCartId(), "Pix", null)));
 
         assertEquals("CART_ALREADY_APPROVED", ex.getErrorSpec().errorCode());
-        verifyNoInteractions(paymentEventPublisherPort);
+        verifyNoInteractions(checkoutCompletionPort);
+    }
+
+    @Test
+    @DisplayName("Deve reconciliar carrinho PROCESSING quando o gateway confirma aprovação")
+    void shouldRecoverStuckApprovedPayment() {
+        var startedAt = java.time.Instant.now().minusSeconds(300);
+        Cart base = createSampleCart();
+        Cart processing = new Cart(base.getCartId(), base.getProducts(), base.getAvailablePaymentMethods(),
+                CartStatus.PROCESSING, null, "Cartão de Crédito", "4242", startedAt, UUID.randomUUID());
+        when(cartRepositoryPort.findStuckProcessingBefore(any())).thenReturn(List.of(processing));
+        when(cartRepositoryPort.tryClaimStuckPaymentRecovery(eq(processing.getCartId()), any())).thenReturn(true);
+        when(cartRepositoryPort.findById(processing.getCartId())).thenReturn(Optional.of(processing));
+        when(paymentGatewayPort.findPaymentStatus(any())).thenReturn(
+                Optional.of(new PaymentGatewayPort.PaymentResult(true, null)));
+        when(checkoutCompletionPort.saveAndEnqueue(any(Cart.class), any(CheckoutPaymentEvent.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        checkoutService.recoverBefore(java.time.Instant.now());
+
+        assertEquals(CartStatus.APPROVED, processing.getStatus());
+        assertEquals("4242", processing.getReceipt().lastDigits());
+        verify(checkoutCompletionPort).saveAndEnqueue(eq(processing), any(CheckoutPaymentEvent.class));
+    }
+
+    @Test
+    @DisplayName("Deve manter carrinho em PROCESSING quando o gateway ainda não confirma o resultado")
+    void shouldKeepPaymentProcessingWhenGatewayOutcomeIsUnknown() {
+        Cart base = createSampleCart();
+        Cart processing = new Cart(base.getCartId(), base.getProducts(), base.getAvailablePaymentMethods(),
+                CartStatus.PROCESSING, null, "Cartão de Crédito", "4242",
+                java.time.Instant.now().minusSeconds(300), UUID.randomUUID());
+        when(cartRepositoryPort.findStuckProcessingBefore(any())).thenReturn(List.of(processing));
+        when(cartRepositoryPort.tryClaimStuckPaymentRecovery(eq(processing.getCartId()), any())).thenReturn(true);
+        when(cartRepositoryPort.findById(processing.getCartId())).thenReturn(Optional.of(processing));
+        when(paymentGatewayPort.findPaymentStatus(any())).thenReturn(Optional.empty());
+
+        checkoutService.recoverBefore(java.time.Instant.now());
+
+        assertEquals(CartStatus.PROCESSING, processing.getStatus());
+        verifyNoInteractions(checkoutCompletionPort);
     }
 
     @Test
@@ -155,7 +195,7 @@ class CheckoutDomainServiceTest {
                 () -> checkoutService.execute(new ProcessCheckoutUseCase.CheckoutCommand(randomId, "Pix", null)));
 
         assertEquals("CART_NOT_FOUND", ex.getErrorSpec().errorCode());
-        verifyNoInteractions(paymentEventPublisherPort);
+        verifyNoInteractions(checkoutCompletionPort);
     }
 
     @Test
@@ -168,12 +208,17 @@ class CheckoutDomainServiceTest {
                 () -> checkoutService.execute(new ProcessCheckoutUseCase.CheckoutCommand(cart.getCartId(), "Boleto", null)));
 
         assertEquals("INVALID_PAYMENT_METHOD", ex.getErrorSpec().errorCode());
-        verifyNoInteractions(paymentEventPublisherPort);
+        verifyNoInteractions(checkoutCompletionPort);
     }
 
     private Cart createSampleCart() {
         var product = new Product("premium", "Plano Premium", "Assinatura", new BigDecimal("39.90"), "BRL");
         var methods = List.of(new PaymentMethod("Cartão de Crédito"), new PaymentMethod("Pix"));
         return Cart.createNew(List.of(product), methods);
+    }
+
+    private void stubCompletion() {
+        when(checkoutCompletionPort.saveAndEnqueue(any(Cart.class), any(CheckoutPaymentEvent.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 }
