@@ -14,6 +14,8 @@ public class CheckoutMetrics {
         // Pré-registra as séries principais com 0 para evitar 404 antes do primeiro pagamento
         registerCounter("Cartão de Crédito", "APPROVED");
         registerCounter("Cartão de Crédito", "DECLINED");
+        registerCounter("Cartão de Débito", "APPROVED");
+        registerCounter("Cartão de Débito", "DECLINED");
         registerCounter("Pix", "APPROVED");
     }
 

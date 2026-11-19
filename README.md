@@ -55,45 +55,61 @@ Esta opção sobe toda a infraestrutura (PostgreSQL 16, RabbitMQ 3.13, Redis 7) 
 
 Compile o projeto e gere o pacote .jar (opcional caso o Dockerfile realize build multi-stage, mas recomendado para garantir o artefato atualizado):
 
+```bash
 ./mvnw clean package -DskipTests
+```
 
 Suba todos os containers com build atualizado:
+
+```bash
 docker compose up -d --build
+```
 
 (Caso precise resetar o volume do banco de dados ou chaves antigas de cache entre versões, utilize docker compose down -v && docker compose up -d --build).
 
 Acompanhe os logs de inicialização até o Spring Boot subir na porta 8080:
+
+```bash
 docker logs -f checkout-bff-app
+```
 
-Valide a saúde de todos os serviços conectados:
+### Valide a saúde de todos os serviços conectados:
 
+```bash
 curl -s http://localhost:8080/actuator/health | jq
-
+```
 O retorno deve indicar "status": "UP" para db (PostgreSQL), rabbit (RabbitMQ) e redis (Redis).
 
-Opção 2: Execução Local (IDE / Maven) + Infraestrutura em Docker
+### Opção 2: Execução Local (IDE / Maven) + Infraestrutura em Docker
 Ideal para desenvolvimento e depuração passo a passo no IntelliJ IDEA ou VS Code:
 
 Suba apenas os serviços de apoio (PostgreSQL, RabbitMQ e Redis):
 
+```bash
 docker compose up -d postgres rabbitmq redis
+```
 
 Gere os fontes do contrato OpenAPI e execute a aplicação:
-./mvnw clean spring-boot:run
 
+```bash
+./mvnw clean spring-boot:run
+```
 Endpoints Úteis e Interfaces de ApoioServiço / FerramentaURL / PortaCredenciais / ObservaçõesCheckout BFF APIhttp://localhost:8080Endpoints /operations/pre-checkout e /operations/checkoutSwagger UI (OpenAPI)http://localhost:8080/swagger-ui.htmlDocumentação interativa gerada a partir do YAMLActuator Healthhttp://localhost:8080/actuator/healthStatus integrado de PostgreSQL, RabbitMQ e RedisMétricas Micrometerhttp://localhost:8080/actuator/metrics/checkout.payments.totalContadores de pagamentos aprovados e recusadosRabbitMQ Managementhttp://localhost:15672Usuário: guest | Senha: guestPostgreSQL 16localhost:5432Banco: checkout_db | Usuário: checkout | Senha: checkoutRedis 7 (Cache)localhost:6379Inspeção rápida: docker exec -it checkout-redis redis-cli KEYS "*"
 
 
 Testes Automatizados e Cobertura (JaCoCo)
 A suíte combina testes unitários de domínio (JUnit 5 + Mockito), testes da camada Web (@WebMvcTest) e testes de integração ponta a ponta com banco real via Testcontainers (certifique-se de que o Docker esteja ativo antes de rodar):
 
-Executar toda a suíte de testes e gerar relatório de cobertura:
+### Executar toda a suíte de testes e gerar relatório de cobertura:
+
+```bash
 ./mvnw clean test
+```
 
 Abrir o relatório visual do JaCoCo no navegador (macOS / Linux):
 open target/site/jacoco/index.html
 
-Executar a Collection Automatizada no Postman:
+### Executar a Collection Automatizada no Postman:
 
 Importe o arquivo docs/postman/checkout-bff-postman-collection.json no Postman.
 
@@ -102,12 +118,16 @@ Execute via Collection Runner para validar automaticamente os 9 cenários (pré-
 Exemplos de Uso via cURL
 ### 1. Iniciar Pré-Checkout
 Catálogo simulado disponível: basico (R$ 19,90), premium (R$ 39,90) e familia (R$ 59,90).
+
+```bash
 curl -i -X POST http://localhost:8080/operations/pre-checkout \
   -H "Content-Type: application/json" \
   -H "X-Correlation-Id: teste-curl-001" \
   -d '{"products": [{"slug": "premium"}]}'
-
+```
 ### 2. Simular Recusa de Pagamento (Cartão final 0002)
+
+```bash
 curl -i -X POST http://localhost:8080/operations/checkout \
   -H "Content-Type: application/json" \
   -H "X-Correlation-Id: teste-curl-002" \
@@ -123,9 +143,10 @@ curl -i -X POST http://localhost:8080/operations/checkout \
       }
     }
   }'
-
+```
 ### 3. Simular Checkout Aprovado com Cartão (Cartão final 4242)
 
+```bash
 curl -i -X POST http://localhost:8080/operations/checkout \
   -H "Content-Type: application/json" \
   -H "X-Correlation-Id: teste-curl-003" \
@@ -141,9 +162,13 @@ curl -i -X POST http://localhost:8080/operations/checkout \
       }
     }
   }'
-
+```
 
 ### 4. Simular Checkout Aprovado com Pix
+
+> **Nota:** Gere um novo `cartId` no passo 1 (um carrinho já aprovado retorna erro `409 Conflict`).
+
+```bash
 curl -i -X POST http://localhost:8080/operations/checkout \
   -H "Content-Type: application/json" \
   -H "X-Correlation-Id: teste-curl-004" \
@@ -153,5 +178,29 @@ curl -i -X POST http://localhost:8080/operations/checkout \
       "name": "Pix"
     }
   }'
+```
 
+### 5. Simular Checkout Aprovado com Cartão de Débito
+
+```bash
+CART_ID=$(curl -s -X POST http://localhost:8080/operations/pre-checkout \
+  -H "Content-Type: application/json" \
+  -d '{"products": [{"slug": "basico"}]}' | grep -oE '"cartId":"[^"]+"' | cut -d'"' -f4)
+
+curl -i -X POST http://localhost:8080/operations/checkout \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-Id: teste-curl-005" \
+  -d "{
+    \"cartId\": \"$CART_ID\",
+    \"paymentMethod\": {
+      \"name\": \"Cartão de Débito\",
+      \"card\": {
+        \"holderName\": \"Ana Souza\",
+        \"number\": \"4111111111114242\",
+        \"expiry\": \"12/28\",
+        \"cvv\": \"123\"
+      }
+    }
+  }"
+```
 
