@@ -1,5 +1,6 @@
 package com.dw.checkout.domain.model;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 
 public record Product(
@@ -8,4 +9,4 @@ public record Product(
         String description,
         BigDecimal price,
         String currency
-) {}
+) implements Serializable {}

@@ -22,8 +22,8 @@ public class RabbitMQPaymentConsumer {
 
     @RabbitListener(queues = RabbitMQConfig.PAYMENT_QUEUE)
     public void onPaymentProcessed(CheckoutPaymentEvent event) {
-        if (event.status() == CartStatus.APROVADO) {
-            checkoutMetrics.recordPaymentAttempt(event.paymentMethod(), event.status().name());
+        if (event.status() == CartStatus.APPROVED) {
+            checkoutMetrics.recordPayment(event.paymentMethod(), event.status().name());
             log.info("[RabbitMQ Consumer] Ativando assinatura assíncrona | cartId={} | planos={} | valor={} {}",
                     event.cartId(), event.productSlugs(), event.amount(), event.currency());
         } else {

@@ -30,7 +30,7 @@ public class Cart {
     }
 
     public boolean isApproved() {
-        return this.status == CartStatus.APROVADO;
+        return this.status == CartStatus.APPROVED;
     }
 
     public boolean supportsPaymentMethod(String methodName) {
@@ -49,7 +49,7 @@ public class Cart {
     }
 
     public void approve(PaymentReceipt receipt) {
-        this.status = CartStatus.APROVADO;
+        this.status = CartStatus.APPROVED;
         this.receipt = receipt;
     }
 
